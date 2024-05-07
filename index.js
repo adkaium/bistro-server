@@ -1,5 +1,6 @@
 const express = require("express");
 const {MongoClient, ServerApiVersion, ObjectId} = require("mongodb");
+const jwt = require("jsonwebtoken");
 const app = express();
 const cors = require("cors");
 require("dotenv").config();
@@ -32,9 +33,39 @@ async function run() {
     const menuCollection = client.db("bistroDb").collection("menu");
     const reviewCollection = client.db("bistroDb").collection("reviews");
     const cartCollection = client.db("bistroDb").collection("carts");
+    
+    
+    // jwt related api
+    app.post('/jwt', async(req,res)=>{
+      const user =req.body
+      const token = jwt.sign(user, process.env.Access_TOKEN_SECRET,{
+        expiresIn: '1h'
+      });
+      res.send({token})
+    })
+    
+    // middlewers
+    const verifyToken = async (req,res,next) =>{
+      console.log("Inside Verify",req.headers);
+      if (!req.headers.authorization){
+        return res.status(401).send({message:'Forbidden access'})
+      } 
+      const token =req.headers.authorization.split(' ')[1];
+      jwt.verify(token, process.env.Access_TOKEN_SECRET, (err, decoded)=>{
+        if(err){
+          return res.status(401).send({message: 'forbidden access'})
+        }
+        req.decoded= decoded;
+        next()
+      })
+
+    }
+
+
 
     // user api
-    app.get("/users", async (req, res) => {
+    app.get("/users", verifyToken, async (req, res) => {
+      // console.log("Inside Verify", req.headers);
       const result = await userCollection.find().toArray();
       res.send(result);
     });
@@ -57,6 +88,19 @@ async function run() {
       const result = await userCollection.deleteOne(query);
       res.send(result);
     });
+
+    app.patch("/users/admin/:id", async(req,res)=>{
+       const id = req.params.id;
+       const filter= {_id: new ObjectId(id)}
+       const updatedDoc = {
+          $set: {
+            role: 'admin'
+          
+          } 
+       }
+      const result = await userCollection.updateOne(filter,updatedDoc)
+      res.send(result)
+    })
 
     // itme api
     app.get("/menu", async (req, res) => {
